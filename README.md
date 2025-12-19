@@ -206,3 +206,32 @@ Troubleshooting
 - If DuckDB reports spatial extension errors, ensure the process has network
   access on first run so `INSTALL spatial` can fetch the extension bundle.
 
+
+License
+-------
+
+This project is licensed under the MIT License. See the `LICENSE` file for the
+full license text.
+
+
+Contributing
+------------
+
+Contributions are welcome. To get started:
+
+1. Fork the repository and create a new branch for your change.
+2. Make your changes, following the existing code style and structure.
+3. Run the tests and build the project to ensure everything compiles:
+
+   ```bash
+   cargo build
+   ```
+
+4. Open a pull request with a clear description of:
+   - What you changed
+   - Why the change is needed
+   - Any relevant screenshots or logs (for UI/behaviour changes)
+
+For larger changes, consider opening an issue first to discuss design and
+scope before implementing.
+
