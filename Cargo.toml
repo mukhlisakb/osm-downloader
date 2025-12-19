@@ -1,0 +1,21 @@
+[package]
+name = "osm-downloader"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.29.0"
+crossterm = { version = "0.28", features = ["event-stream"] }
+tokio = { version = "1.36", features = ["full"] }
+reqwest = { version = "0.11", features = ["json", "stream", "rustls-tls"] }
+duckdb = { version = "1.0.0", features = ["bundled"] }
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+tracing-appender = "0.2"
+tui-textarea = "0.7.0"
+directories = "5.0"
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
