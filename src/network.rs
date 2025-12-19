@@ -27,6 +27,9 @@ pub enum DownloadEvent {
     Progress(f64), // Percentage 0.0 to 100.0
     Complete(PathBuf),
     Error(String),
+    ImportStarted,
+    ImportFinished(String), // Message
+    ImportFailed(String), // Error message
 }
 
 pub struct Downloader {
@@ -131,6 +134,15 @@ impl Downloader {
         }
 
         file.flush().await?;
+        if total_size > 0 && downloaded != total_size {
+            let msg = format!(
+                "Download incomplete: expected {} bytes, got {} bytes",
+                total_size, downloaded
+            );
+            warn!("{}", msg);
+            let _ = tx.send(DownloadEvent::Error(msg.clone())).await;
+            return Err(anyhow!(msg));
+        }
         let _ = tx.send(DownloadEvent::Complete(file_path.clone())).await;
         info!("Download completed: {:?}", file_path);
         

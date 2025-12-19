@@ -100,28 +100,51 @@ async fn run_app<B: ratatui::backend::Backend>(
                         let path_clone = path.clone();
                         let path_str = path_clone.to_string_lossy().to_string();
                         let url_str = "manual_download"; // Todo: track actual URL
-
-                        // We assume simple table name for now
-                        let table_name = "imported_data"; 
-
-                        app.add_log("Starting auto-import to DuckDB...".to_string());
+                        let table_name = "imported_data";
                         
+                        let tx_import = tx.clone(); // Clone for the background task
+
                         tokio::task::spawn_blocking(move || {
+                            let _ = tx_import.blocking_send(DownloadEvent::ImportStarted);
                             let db = db_clone.blocking_lock();
                             let _ = db.record_download(url_str, &path_str);
                             match db.import_data(&path_str, table_name) {
-                                Ok(_) => {}, // We can't easily signal back without another channel, for now logs handled inside or we assume success
+                                Ok(_) => {
+                                    let _ = tx_import.blocking_send(DownloadEvent::ImportFinished("Import successful.".to_string()));
+                                },
                                 Err(e) => {
-                                    // In a real app we'd send an Error event back
                                     tracing::error!("Import failed: {}", e);
+                                    let _ = tx_import.blocking_send(DownloadEvent::ImportFailed(e.to_string()));
                                 }
                             }
                         });
-                        app.add_log("Import task spawned. Please wait for completion log.".to_string());
-                        
-                        // Pre-populate SQL input for convenience
-                        app.sql_input = tui_textarea::TextArea::default();
-                        app.sql_input.insert_str("SELECT * FROM imported_data LIMIT 10;");
+                    }
+                    DownloadEvent::ImportStarted => {
+                        app.add_log("Starting auto-import to DuckDB...".to_string());
+                    }
+                    DownloadEvent::ImportFinished(msg) => {
+                         app.add_log(msg);
+                         // Pre-populate SQL input for convenience
+                         app.sql_input = tui_textarea::TextArea::default();
+                         let query = "SELECT * FROM imported_data LIMIT 10;";
+                         app.sql_input.insert_str(query);
+                         
+                         // Auto-execute query
+                         app.add_log("Auto-executing preview query...".to_string());
+                         // We use blocking_lock which can panic in async context if not careful.
+                         // Instead, use try_lock() to avoid blocking the runtime thread, or spawn_blocking if we really need to wait.
+                         // Since we want to update UI immediately, try_lock is safer. If busy, we skip preview.
+                         if let Ok(db_lock) = db.try_lock() {
+                              match db_lock.query(query) {
+                                   Ok(output) => app.sql_output = output,
+                                   Err(e) => app.sql_output = format!("Error executing preview: {}", e),
+                              }
+                         } else {
+                              app.add_log("DB busy, skip preview.".to_string());
+                         }
+                    }
+                    DownloadEvent::ImportFailed(e) => {
+                         app.add_log(format!("Import failed: {}", e));
                     }
                     DownloadEvent::Error(e) => {
                         app.is_downloading = false;
@@ -198,24 +221,28 @@ async fn run_app<B: ratatui::backend::Backend>(
                                     }
                                 }
                                 ActiveTab::Database => {
+                                    // Log for debugging
+                                    // app.add_log(format!("Key: {:?} Mod: {:?}", key.code, key.modifiers));
+
                                     let is_ctrl_enter = key.code == KeyCode::Enter && key.modifiers.contains(KeyModifiers::CONTROL);
                                     let is_ctrl_e = key.code == KeyCode::Char('e') && key.modifiers.contains(KeyModifiers::CONTROL);
+                                    let is_shift_ctrl_enter = key.code == KeyCode::Enter && key.modifiers.contains(KeyModifiers::CONTROL | KeyModifiers::SHIFT);
+                                    
+                                    // Also allow simple F5
+                                    let is_f5 = key.code == KeyCode::F(5);
 
-                                    if is_ctrl_enter || is_ctrl_e {
+                                    if is_ctrl_enter || is_ctrl_e || is_shift_ctrl_enter || is_f5 {
                                         // Execute Query
                                         let query = app.sql_input.lines().join("\n");
                                         app.add_log(format!("Executing: {}", query));
                                         
-                                        let db_clone = db.clone();
-                                        // Block for simplicity (local DB)
-                                        let res = {
-                                            let db = db_clone.blocking_lock();
-                                            db.query(&query)
-                                        };
-
-                                        match res {
-                                            Ok(output) => app.sql_output = output,
-                                            Err(e) => app.sql_output = format!("Error: {}", e),
+                                        if let Ok(db_lock) = db.try_lock() {
+                                            match db_lock.query(&query) {
+                                                Ok(output) => app.sql_output = output,
+                                                Err(e) => app.sql_output = format!("Error: {}", e),
+                                            }
+                                        } else {
+                                            app.sql_output = "DB busy, cannot execute query.".to_string();
                                         }
                                     } else {
                                         app.sql_input.input(key);

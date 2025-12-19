@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use duckdb::{Connection, types::ValueRef};
+use duckdb::Connection;
 use std::path::Path;
 use tracing::{error, info};
 
@@ -44,6 +44,8 @@ impl Database {
 
     pub fn import_data(&self, file_path: &str, table_name: &str) -> Result<()> {
         info!("Importing {} into table {}...", file_path, table_name);
+        let metadata = std::fs::metadata(file_path)?;
+        info!("File size for import: {} bytes", metadata.len());
         
         // Drop table if exists to overwrite
         let _ = self.conn.execute(&format!("DROP TABLE IF EXISTS {}", table_name), []);
@@ -74,12 +76,14 @@ impl Database {
 
     pub fn query(&self, sql: &str) -> Result<String> {
         let mut stmt = self.conn.prepare(sql)?;
-        let column_count = stmt.column_count();
+        let mut rows = stmt.query([])?;
+
+        let stmt_ref = rows.as_ref().unwrap();
+        let column_count = stmt_ref.column_count();
         let column_names: Vec<String> = (0..column_count)
-            .map(|i| stmt.column_name(i).map(|s| s.to_string()).unwrap_or("unknown".to_string()))
+            .map(|i| stmt_ref.column_name(i).map(|s| s.to_string()).unwrap_or("unknown".to_string()))
             .collect();
 
-        let mut rows = stmt.query([])?;
         let mut output = String::new();
 
         // Header
@@ -88,7 +92,6 @@ impl Database {
         output.push_str(&"-".repeat(output.len()));
         output.push('\n');
 
-        // Rows (limit to 20 for display safety in TUI)
         let mut count = 0;
         while let Some(row) = rows.next()? {
             if count > 50 {
@@ -97,14 +100,19 @@ impl Database {
             }
             let values: Vec<String> = (0..column_count)
                 .map(|i| {
-                    let val = row.get_ref(i).unwrap();
-                    match val {
-                        ValueRef::Null => "NULL".to_string(),
-                        ValueRef::Int(i) => i.to_string(),
-                        ValueRef::BigInt(i) => i.to_string(),
-                        ValueRef::Double(d) => d.to_string(),
-                        ValueRef::Text(t) => String::from_utf8_lossy(t).to_string(),
-                        _ => format!("{:?}", val),
+                    let as_string: Result<String, _> = row.get(i);
+                    match as_string {
+                        Ok(s) => {
+                            if s.len() > 80 {
+                                format!("{}…", &s[..80])
+                            } else {
+                                s
+                            }
+                        }
+                        Err(_) => {
+                            let val = row.get_ref(i).unwrap();
+                            format!("{:?}", val)
+                        }
                     }
                 })
                 .collect();

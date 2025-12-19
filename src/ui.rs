@@ -127,7 +127,7 @@ fn draw_database_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
     app.sql_input.set_style(active_style);
-    app.sql_input.set_block(Block::default().borders(Borders::ALL).title("SQL Query (Press Ctrl+e to Execute)").style(active_style));
+    app.sql_input.set_block(Block::default().borders(Borders::ALL).title("SQL Query (Press Ctrl+e or Ctrl+Shift+Enter to Execute)").style(active_style));
     f.render_widget(&app.sql_input, chunks[0]);
 
     let output = Paragraph::new(app.sql_output.as_str())
