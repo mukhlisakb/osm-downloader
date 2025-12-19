@@ -147,6 +147,8 @@ impl Database {
         }
         output.push('\n');
 
+        let displayed_rows = rows_buffer.len();
+
         for row_values in rows_buffer {
             for (idx, value) in row_values.iter().enumerate() {
                 if idx > 0 {
@@ -166,6 +168,15 @@ impl Database {
         if truncated {
             output.push_str("... (more rows truncated)\n");
         }
+
+        let rows_label = if truncated {
+            format!("Rows: {}+ (showing {})", displayed_rows, displayed_rows)
+        } else {
+            format!("Rows: {}", displayed_rows)
+        };
+        let summary = format!("{} | Columns: {}", rows_label, column_count);
+        output.push_str(&summary);
+        output.push('\n');
 
         Ok(output)
     }
