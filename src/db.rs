@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use duckdb::Connection;
-use std::path::Path;
+use std::{path::Path, time::Instant};
 use tracing::{error, info};
 
 pub struct Database {
@@ -75,6 +75,7 @@ impl Database {
     }
 
     pub fn query(&self, sql: &str) -> Result<String> {
+        let start = Instant::now();
         let mut stmt = self.conn.prepare(sql)?;
         let mut rows = stmt.query([])?;
 
@@ -174,7 +175,8 @@ impl Database {
         } else {
             format!("Rows: {}", displayed_rows)
         };
-        let summary = format!("{} | Columns: {}", rows_label, column_count);
+        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+        let summary = format!("{} | Columns: {} | Time: {:.2} ms", rows_label, column_count, elapsed_ms);
         output.push_str(&summary);
         output.push('\n');
 
