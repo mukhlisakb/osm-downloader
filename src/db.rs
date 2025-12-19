@@ -84,41 +84,87 @@ impl Database {
             .map(|i| stmt_ref.column_name(i).map(|s| s.to_string()).unwrap_or("unknown".to_string()))
             .collect();
 
-        let mut output = String::new();
-
-        // Header
-        output.push_str(&column_names.join(" | "));
-        output.push('\n');
-        output.push_str(&"-".repeat(output.len()));
-        output.push('\n');
-
+        let mut rows_buffer: Vec<Vec<String>> = Vec::new();
+        let mut widths: Vec<usize> = column_names.iter().map(|n| n.len()).collect();
         let mut count = 0;
+        let mut truncated = false;
+
         while let Some(row) = rows.next()? {
             if count > 50 {
-                output.push_str("... (more rows truncated)\n");
+                truncated = true;
                 break;
             }
-            let values: Vec<String> = (0..column_count)
-                .map(|i| {
-                    let as_string: Result<String, _> = row.get(i);
-                    match as_string {
-                        Ok(s) => {
-                            if s.len() > 80 {
-                                format!("{}…", &s[..80])
-                            } else {
-                                s
-                            }
-                        }
-                        Err(_) => {
-                            let val = row.get_ref(i).unwrap();
-                            format!("{:?}", val)
-                        }
+            let mut values: Vec<String> = Vec::with_capacity(column_count);
+            for i in 0..column_count {
+                let as_string: Result<String, _> = row.get(i);
+                let mut value = match as_string {
+                    Ok(s) => s,
+                    Err(_) => {
+                        let val = row.get_ref(i).unwrap();
+                        format!("{:?}", val)
                     }
-                })
-                .collect();
-            output.push_str(&values.join(" | "));
-            output.push('\n');
+                };
+                if value.len() > 80 {
+                    value = format!("{}…", &value[..80]);
+                }
+                if value.len() > widths[i] {
+                    widths[i] = value.len();
+                }
+                values.push(value);
+            }
+            rows_buffer.push(values);
             count += 1;
+        }
+
+        let max_col_width = 30;
+        for w in &mut widths {
+            if *w > max_col_width {
+                *w = max_col_width;
+            }
+        }
+
+        let mut output = String::new();
+
+        for (idx, name) in column_names.iter().enumerate() {
+            if idx > 0 {
+                output.push_str(" | ");
+            }
+            let cell = if name.len() > widths[idx] {
+                &name[..widths[idx]]
+            } else {
+                name
+            };
+            let padded = format!("{:width$}", cell, width = widths[idx]);
+            output.push_str(&padded);
+        }
+        output.push('\n');
+
+        for (idx, w) in widths.iter().enumerate() {
+            if idx > 0 {
+                output.push_str("-+-");
+            }
+            output.push_str(&"-".repeat(*w));
+        }
+        output.push('\n');
+
+        for row_values in rows_buffer {
+            for (idx, value) in row_values.iter().enumerate() {
+                if idx > 0 {
+                    output.push_str(" | ");
+                }
+                let cell = if value.len() > widths[idx] {
+                    &value[..widths[idx]]
+                } else {
+                    value
+                };
+                let padded = format!("{:width$}", cell, width = widths[idx]);
+                output.push_str(&padded);
+            }
+            output.push('\n');
+        }
+
+        if truncated {
+            output.push_str("... (more rows truncated)\n");
         }
 
         Ok(output)
